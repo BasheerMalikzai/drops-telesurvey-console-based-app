@@ -1,0 +1,71 @@
+{
+  "surveyors": [
+    { "id": "101", "name": "Surveyor One",   "phone": "+000000000001", "active": true },
+    { "id": "102", "name": "Surveyor Two",   "phone": "+000000000002", "active": true },
+    { "id": "103", "name": "Surveyor Three", "phone": "+000000000003", "active": true, "daily_quota": 20 }
+  ],
+
+  "assignment": {
+    "numbers_per_surveyor": 30,
+    "max_attempts": 5,
+    "reschedules_count_as_attempts": false,
+    "sticky_reschedule": true
+  },
+
+  "pull": {
+    "_comment": "batch_size 0 = pull just enough new numbers from phone_pool to fill each day; e.g. 500 = pull 500 at a time whenever the call list runs short",
+    "batch_size": 0
+  },
+
+  "outcomes": {
+    "_comment": "Codes are the 'name' values of the status_call choices. Run: .venv/bin/python -m telesurvey inspect",
+    "successful":  { "action": "done",     "codes": ["completed", "successful", "success"] },
+    "rescheduled": { "action": "callback", "codes": ["rescheduled", "reschedule", "callback"] },
+    "declined":    { "action": "done",     "codes": ["refused", "declined", "decline"] },
+    "no_pickup":   { "action": "retry",    "codes": ["no_answer", "not_picked", "no_pickup", "unanswered"] },
+    "busy":        { "action": "retry",    "codes": ["busy"] },
+    "invalid":     { "action": "done",     "codes": ["invalid_number", "wrong_number"] }
+  },
+
+  "kobo_fields": {
+    "phone":             "phnumber",
+    "call_status":       "recording_group/status_call",
+    "surveyor":          "idnumber",
+    "surveyor_fallback": "_submitted_by",
+    "callback_date":     "reschedual",
+    "validation_status": "_validation_status",
+    "submission_time":   "_submission_time"
+  },
+
+  "kobo_import": {
+    "_comment": "required_validation_status: \"\" = every submission counts; \"validation_status_approved\" = only approved ones",
+    "required_validation_status": "",
+    "lookback_days": 14,
+    "overlap_hours": 24
+  },
+
+  "report": {
+    "enabled": true,
+    "recipients": ["manager@example.org", "supervisor@example.org"],
+    "send_on": "always",
+    "report_day": "yesterday",
+    "subject_prefix": "[Telesurvey]"
+  },
+
+  "schedule": {
+    "_comment": "Installed with ./setup.sh --schedule. sync_every_minutes: 20-360, or 0 = no syncing during the day",
+    "morning_run": "06:00",
+    "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+    "sync_every_minutes": 30,
+    "sync_from": "07:00",
+    "sync_until": "19:00",
+    "sync_overlap_minutes": 60
+  },
+
+  "paths": {
+    "phone_list": "data/phone_numbers.csv",
+    "database":   "data/telesurvey.db",
+    "output_dir": "data/assignments",
+    "log_file":   "data/telesurvey.log"
+  }
+}
