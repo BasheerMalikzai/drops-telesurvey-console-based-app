@@ -395,7 +395,7 @@ Keep the project **outside** Documents, Desktop, Downloads and iCloud Drive
 `./setup.sh --pythonanywhere` prints the exact commands for two tasks on the
 **Tasks** tab:
 
-1. A **daily** task running `/home/YOURNAME/telesurvey/daily.sh`. **The time is
+1. A **daily** task running `/home/YOURNAME/telesurvey/daily.sh --scheduled`. **The time is
    UTC** (06:00 in Nairobi = 03:00 UTC).
 2. An **hourly** task running `/home/YOURNAME/telesurvey/sync.sh`. PythonAnywhere
    runs tasks at most hourly, so a sync interval under 60 minutes behaves like 60.
