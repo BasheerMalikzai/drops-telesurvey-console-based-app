@@ -330,7 +330,7 @@ if [[ $PYTHONANYWHERE == 1 ]]; then
 PythonAnywhere: add two tasks on the Tasks tab (times there are UTC)
 --------------------------------------------------------------------
   1. Scheduled task, daily, at the UTC equivalent of $MORNING:
-       $PROJECT_DIR/daily.sh
+       $PROJECT_DIR/daily.sh --scheduled
   2. Scheduled task, hourly:
        $PROJECT_DIR/sync.sh
      PythonAnywhere runs tasks at most hourly, so a sync interval under 60 minutes
