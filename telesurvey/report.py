@@ -100,7 +100,9 @@ def pool_lines(cfg, conn) -> list:
     from .export import call_list_summary, pool_summary
     p = pool_summary(conn)
     s = call_list_summary(cfg, conn)
+    from .export import language_summary
     lines = [("phone_pool", f"{p['total']} numbers, {p['not_pulled']} not pulled yet")]
+    lines += [(f"  {lang}", f"{total} numbers, {left} not pulled yet") for lang, total, left in language_summary(conn)]
     lines += [(f"call_list: {k}", v) for k, v in s["status"]]
     lines += [(f"  last result: {k}", v) for k, v in s["result"]]
     return lines
@@ -109,7 +111,9 @@ def pool_lines(cfg, conn) -> list:
 def assignment_counts(cfg, conn, day: str) -> List[tuple]:
     rows = conn.execute("""SELECT surveyor_id, COUNT(*) AS c FROM assignments WHERE assign_date=?
                            GROUP BY surveyor_id ORDER BY surveyor_id""", (day,)).fetchall()
-    return [(f"{r['surveyor_id']} {cfg.surveyor_name(r['surveyor_id'])}".strip(), r["c"]) for r in rows]
+    speaks = {s.id: "/".join(s.languages) for s in cfg.surveyors}
+    return [(f"{r['surveyor_id']} {cfg.surveyor_name(r['surveyor_id'])}".strip()
+             + (f" ({speaks[r['surveyor_id']]})" if speaks.get(r["surveyor_id"]) else ""), r["c"]) for r in rows]
 
 
 def last_log_lines(cfg, n: int = 25) -> str:

@@ -1,9 +1,15 @@
 {
   "surveyors": [
-    { "id": "101", "name": "Surveyor One",   "phone": "+000000000001", "active": true },
-    { "id": "102", "name": "Surveyor Two",   "phone": "+000000000002", "active": true },
-    { "id": "103", "name": "Surveyor Three", "phone": "+000000000003", "active": true, "daily_quota": 20 }
+    { "id": "101", "name": "Surveyor One",   "phone": "+000000000001", "active": true, "languages": ["dari"] },
+    { "id": "102", "name": "Surveyor Two",   "phone": "+000000000002", "active": true, "languages": ["pashto"] },
+    { "id": "103", "name": "Surveyor Three", "phone": "+000000000003", "active": true, "languages": ["dari", "pashto"],
+      "daily_quota": 20 }
   ],
+
+  "phone_list": {
+    "_comment": "Column(s) of data/phone_numbers.csv that hold each respondent's language (Dari, Pashto ...)",
+    "language_columns": ["language", "lang"]
+  },
 
   "assignment": {
     "numbers_per_surveyor": 30,

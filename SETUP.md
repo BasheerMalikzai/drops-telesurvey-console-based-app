@@ -105,6 +105,7 @@ form can use:
 | `surveyor_id` | Caller the number is assigned to | `choice_filter: surveyor_id=${idnumber}` |
 | `contact_name` | Respondent name | `pulldata('assignments', 'contact_name', 'name', ${phnumber})` for `auto_resp_name` |
 | `attempt_no`, `previous_outcome` | Call history | Optional hints for the caller |
+| `language` | Respondent's language | Show it to the caller, e.g. `pulldata('assignments', 'language', 'name', ${phnumber})` |
 
 Deploy the form. You don't need to upload `assignments.csv` by hand: the first
 run uploads it and redeploys the form. The tool's names are configurable
@@ -281,9 +282,10 @@ Run `inspect` again until it says **Everything is mapped**.
 
 ```json
 "surveyors": [
-  { "id": "101", "name": "Ama",  "phone": "+254700000001", "active": true },
-  { "id": "102", "name": "Kofi", "phone": "+254700000002", "active": true },
-  { "id": "103", "name": "Esi",  "phone": "+254700000003", "active": true, "daily_quota": 20 }
+  { "id": "101", "name": "Ama",  "phone": "+93700000001", "active": true, "languages": ["dari"] },
+  { "id": "102", "name": "Kofi", "phone": "+93700000002", "active": true, "languages": ["pashto"] },
+  { "id": "103", "name": "Esi",  "phone": "+93700000003", "active": true, "languages": ["dari", "pashto"],
+    "daily_quota": 20 }
 ]
 ```
 
@@ -293,18 +295,30 @@ Run `inspect` again until it says **Everything is mapped**.
 | `name`, `phone` | Shown in the report |
 | `active` | `false` = gets no numbers (on leave, left the team) |
 | `daily_quota` | Optional: numbers per day for this person |
+| `languages` | Languages this caller speaks, e.g. `["dari"]`, `["pashto"]` or both. Callers only get numbers in their languages. Leave it out and the caller can take any language |
 
 ### 8.2 Phone numbers: `data/phone_numbers.csv`
 
 ```csv
-phone,name
-+254 700 100 001,Abena Mensah
-0700100002,Yaw Owusu
+phone,name,language
++93 70 010 0001,Abena Mensah,Dari
+0700100002,Yaw Owusu,Pashto
 ```
 
 Only `phone` is required. Spaces, dashes and `+` are removed (numbers are stored
 as digits); rows with fewer than 7 digits are skipped. Add rows at any time:
 known numbers are ignored.
+
+**`language`** is the respondent's language. `Dari`, `dari`, `Persian`, `Farsi`,
+`prs` and `دری` all count as Dari; `Pashto`, `Pushto`, `ps` and `پښتو` as Pashto.
+Another column name can be set in `config.json` under `phone_list.language_columns`.
+
+| Situation | What happens |
+|---|---|
+| Number has a language | Only callers who speak it get it (retries and callbacks too) |
+| Number has no language | Any caller may get it; bilingual callers first |
+| Language nobody active speaks (e.g. Uzbek) | Not assigned; the log and report warn how many are waiting |
+| Language column added to the file later | The next run fills in the language for numbers already imported |
 
 ---
 

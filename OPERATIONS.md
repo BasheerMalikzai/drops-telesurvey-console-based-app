@@ -161,10 +161,16 @@ gives all of them another round (attempts reset to 0). `0` means no limit.
    (if any) has come: **callbacks due first, then retries, then pulled numbers
    not yet called**, random within each group.
 3. Not enough? New numbers are pulled **at random** from `phone_pool` (only
-   numbers not yet in `call_list`): just the shortfall, or `pull.batch_size`
-   at a time if you set one. `ts pull 200` pulls by hand.
-4. Rescheduled numbers go to the caller who booked them; the rest are spread
-   so every caller fills their quota evenly.
+   numbers not yet in `call_list`), **language by language**, so each caller
+   gets numbers they can call even when most of the pool is in one language:
+   just the shortfall, or `pull.batch_size` at a time if you set one.
+   `ts pull 200` pulls by hand.
+4. **A number only goes to a caller who speaks its language.** Rescheduled
+   numbers go to the caller who booked them. Otherwise Dari-only and
+   Pashto-only callers are filled first and bilingual callers take what's left,
+   so nobody sits idle while a bilingual colleague has their numbers; within
+   that, every caller fills their quota evenly. Numbers with no language
+   recorded go to bilingual callers first.
 5. `assignments` is emptied and refilled with today's draw. The uploaded
    `assignments.csv` holds those not yet called (and still `open`).
 
@@ -232,6 +238,8 @@ Edit `surveyors` in `config.json`:
 - **Add:** a new entry whose `id` is the value the caller enters in `idnumber`.
 - **Pause / remove:** `"active": false` (keep the entry so reports still show the name).
 - **Change one person's load:** `"daily_quota": 20`.
+- **Languages:** `"languages": ["dari"]`, `["pashto"]` or `["dari", "pashto"]`. A caller
+  only gets numbers in these languages.
 
 ### A new call-result choice in the form
 
@@ -327,6 +335,8 @@ uses up an attempt.
 | FAILED email: *connecting to the database* | Database down or password changed | Fix the database or `./setup.sh --database` |
 | A caller sees no numbers | Wrong caller ID entered, or `active: false` | Compare `idnumber` with `config.json` |
 | `Submission … has a number that is not in the phone list` | Number not from the list | Callers must pick from the list |
+| `Not enough numbers in the right language: N slots left empty` | No numbers left in a language, e.g. all Pashto numbers done | Add numbers in that language, make a caller bilingual, or lower their `daily_quota` |
+| `N numbers are in 'uzbek', which no active caller speaks` | A language in the phone list that no caller has | Add the language to a caller, or fix the spelling in the phone list |
 | `phone_pool has no numbers left to pull` / fewer numbers assigned than slots | Every imported number has been pulled | Add numbers to `data/phone_numbers.csv`, or `ts reopen --exhausted` |
 | **Sync FAILED** email | KoBo, the database or the internet connection unavailable | `ts check`; fix it. Syncs keep retrying, and you get one "Sync working again" email once it recovers |
 | Callers' lists don't shrink during the day | Sync off, outside sync hours, or failing; or the form not refreshed on the phone | `ts schedule`; ask callers to refresh the form |

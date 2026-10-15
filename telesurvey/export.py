@@ -9,10 +9,12 @@ from typing import Optional
 
 log = logging.getLogger(__name__)
 
-COLUMNS = ["name", "label", "surveyor_id", "contact_name", "attempt_no", "previous_outcome", "assign_date"]
+COLUMNS = ["name", "label", "surveyor_id", "contact_name", "attempt_no", "previous_outcome", "assign_date",
+           "language"]
 
 
-_QUERY = """SELECT a.phone, a.surveyor_id, a.called, p.contact_name, c.attempts, c.last_result_code, c.status
+_QUERY = """SELECT a.phone, a.surveyor_id, a.called, p.contact_name, p.language,
+                    c.attempts, c.last_result_code, c.status
              FROM assignments a
              JOIN call_list c ON c.phone = a.phone
              LEFT JOIN phone_pool p ON p.phone = a.phone
@@ -30,7 +32,7 @@ def _write(path: Path, rows, today: str) -> None:
             # attempts was already increased if a result came in today, so use the stored count
             attempt = r["attempts"] + (0 if r["called"] else 1)
             w.writerow([r["phone"], label, r["surveyor_id"], r["contact_name"] or "",
-                        attempt, r["last_result_code"] or "", today])
+                        attempt, r["last_result_code"] or "", today, r["language"] or ""])
     tmp.replace(path)
 
 
@@ -78,6 +80,8 @@ def print_status(cfg, conn, today: str) -> None:
           f"{_dt.datetime.fromtimestamp(int(last)).strftime('%Y-%m-%d %H:%M') if last else 'never'}")
     pool = pool_summary(conn)
     print(f"\nphone_pool: {pool['total']} numbers ({pool['pulled']} pulled, {pool['not_pulled']} not pulled yet)")
+    for lang, total, left in language_summary(conn):
+        print(f"  {lang:<12} {total} numbers, {left} not pulled yet")
     print("\ncall_list by status:")
     for k, v in call_list_summary(cfg, conn)["status"]:
         print(f"  {k:<12} {v}")
@@ -89,9 +93,10 @@ def print_status(cfg, conn, today: str) -> None:
     rows = conn.execute("""SELECT surveyor_id, COUNT(*) AS c, SUM(called) AS d
                            FROM assignments WHERE assign_date=? GROUP BY surveyor_id
                            ORDER BY surveyor_id""", (today,)).fetchall()
+    speaks = {s.id: "/".join(s.languages) or "any language" for s in cfg.surveyors}
     for r in rows:
         who = f"{r['surveyor_id']} {names.get(r['surveyor_id'], '')}".strip()
-        print(f"  {who:<20} {r['c']} assigned, {r['d'] or 0} called")
+        print(f"  {who:<20} {r['c']} assigned, {r['d'] or 0} called  ({speaks.get(r['surveyor_id'], '?')})")
     if not rows:
         print("  (none yet)")
 
@@ -113,3 +118,15 @@ def call_list_summary(cfg, conn) -> dict:
         label = "not called yet" if not k else (cfg.categories[k]["label"] if k in cfg.categories else k.capitalize())
         result.append((label, r["c"]))
     return {"status": status, "result": result}
+
+
+def language_summary(conn):
+    """[(language, numbers in phone_pool, of which not pulled yet)], or [] if no languages recorded."""
+    rows = conn.execute("""SELECT COALESCE(NULLIF(p.language, ''), 'no language') AS lang,
+                                  COUNT(*) AS total,
+                                  SUM(CASE WHEN c.phone IS NULL THEN 1 ELSE 0 END) AS left_
+                           FROM phone_pool p LEFT JOIN call_list c ON c.phone = p.phone
+                           GROUP BY COALESCE(NULLIF(p.language, ''), 'no language')
+                           ORDER BY 1""").fetchall()
+    out = [(r["lang"], r["total"], r["left_"] or 0) for r in rows]
+    return [] if [o[0] for o in out] in ([], ["no language"]) else out
