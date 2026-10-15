@@ -10,7 +10,10 @@ from typing import Optional
 log = logging.getLogger(__name__)
 
 COLUMNS = ["name", "label", "surveyor_id", "contact_name", "attempt_no", "previous_outcome", "assign_date",
-           "language"]
+           "language",
+           # the same values under the phone list's names, for forms that use
+           # search('Assignment', 'matches', 'assigned_to', ${idnumber}) and the like
+           "assigned_to", "resp_phone_number", "resp_name"]
 
 
 _QUERY = """SELECT a.phone, a.surveyor_id, a.called, p.contact_name, p.language,
@@ -32,7 +35,8 @@ def _write(path: Path, rows, today: str) -> None:
             # attempts was already increased if a result came in today, so use the stored count
             attempt = r["attempts"] + (0 if r["called"] else 1)
             w.writerow([r["phone"], label, r["surveyor_id"], r["contact_name"] or "",
-                        attempt, r["last_result_code"] or "", today, r["language"] or ""])
+                        attempt, r["last_result_code"] or "", today, r["language"] or "",
+                        r["surveyor_id"], r["phone"], r["contact_name"] or ""])
     tmp.replace(path)
 
 

@@ -11,6 +11,7 @@ import datetime as dt
 import hashlib
 import io
 import json
+import re
 import os
 import xml.etree.ElementTree as ET
 from collections import Counter
@@ -96,11 +97,18 @@ def check_form(rep: Report, cfg, s) -> Optional[dict]:
 def check_form_design(rep: Report, cfg, asset: dict) -> None:
     rep.section("2. Form design")
     fname = cfg.media_filename
+    stem = fname.rsplit(".", 1)[0]
     survey = (asset.get("content") or {}).get("survey", [])
+    searchers = [q for q in survey if re.search(r"""search\(\s*['"]%s['"]""" % re.escape(stem),
+                                                str(q.get("appearance", "")))]
+    if searchers:
+        _check_search(rep, cfg, searchers)
+        return
     users = [q for q in survey if fname in json.dumps(q)]
     if not users:
         rep.fail(f"No question uses {fname}",
                  f"Add a question of type: select_one_from_file {fname}\n"
+                 f"or the appearance search('{stem}', ...)\n"
                  f"(or set KOBO_MEDIA_FILENAME in .env to the file name the form uses)")
         return
     q = users[0]
@@ -275,6 +283,38 @@ def compare_database(rep: Report, cfg, rows: list, day: str) -> None:
     if foreign:
         rep.warn(f"{len(foreign)} numbers in the file are not in today's assignment",
                  "KoBo has an old file; run ./daily.sh")
+
+
+def _check_search(rep: Report, cfg, questions) -> None:
+    """Questions using the older search('Assignment', ...) appearance (KoboCollect only)."""
+    from .export import COLUMNS
+    caller = cfg.field_surveyor.split("/")[-1]
+    filtered = False
+    for q in questions:
+        qname = q.get("name") or q.get("$autoname") or "?"
+        app = str(q.get("appearance", ""))
+        rep.ok(f"Question '{qname}' uses {cfg.media_filename} through search()", f"appearance: {app}")
+        m = re.search(r"""search\(\s*['"][^'"]+['"]\s*,\s*['"](\w+)['"]\s*,\s*['"]([^'"]+)['"]\s*,"""
+                      r"""\s*\$\{(\w+)\}""", app)
+        if not m:
+            continue
+        how, column, ref = m.groups()
+        if column not in COLUMNS:
+            rep.fail(f"'{qname}' searches column '{column}', which {cfg.media_filename} doesn't have",
+                     "Columns available: " + ", ".join(COLUMNS))
+        if ref == caller:
+            filtered = filtered or column in ("assigned_to", "surveyor_id")
+            if how == "contains":
+                rep.warn(f"'{qname}' matches the caller ID with 'contains'",
+                         f"ID 232 would also see 2323's numbers. Use: "
+                         f"search('{cfg.media_filename.rsplit('.', 1)[0]}', 'matches', '{column}', ${{{ref}}})")
+    if filtered:
+        rep.ok("Numbers are filtered per surveyor")
+    else:
+        rep.warn("No search() filters on the caller ID",
+                 f"Every caller would see everyone's numbers. Use, e.g.:\n"
+                 f"search('{cfg.media_filename.rsplit('.', 1)[0]}', 'matches', 'assigned_to', ${{{caller}}})")
+    rep.info("search() works in KoboCollect only, not in web forms (Enketo)")
 
 
 def check_phone_view(rep: Report, cfg, s, asset: dict, data: bytes) -> None:
