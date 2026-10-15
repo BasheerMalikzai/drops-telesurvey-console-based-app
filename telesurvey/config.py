@@ -54,6 +54,12 @@ class ConfigError(Exception):
     pass
 
 
+# Column names accepted in the phone list (compared in lower case, spaces/dashes ignored)
+PHONE_COLUMNS = ["phone", "phone_number", "phonenumber", "phone_no", "mobile", "mobile_number",
+                 "mobile_no", "number", "phnumber", "contact_number", "tel", "telephone", "cell"]
+NAME_COLUMNS = ["name", "contact_name", "full_name", "respondent_name", "respondent"]
+
+
 @dataclass
 class Surveyor:
     id: str
@@ -126,6 +132,8 @@ class Config:
 
     surveyors: List[Surveyor] = field(default_factory=list)
     language_columns: List[str] = field(default_factory=lambda: ["language", "lang"])
+    phone_columns: List[str] = field(default_factory=lambda: list(PHONE_COLUMNS))
+    name_columns: List[str] = field(default_factory=lambda: list(NAME_COLUMNS))
 
     @property
     def kobo_enabled(self) -> bool:
@@ -323,6 +331,10 @@ def load_config(config_path: Optional[Path] = None) -> Config:
         surveyors=surveyors,
         language_columns=[str(c).strip().lower() for c in
                           raw.get("phone_list", {}).get("language_columns", ["language", "lang"])],
+        phone_columns=[str(c).strip().lower() for c in
+                       raw.get("phone_list", {}).get("phone_columns", PHONE_COLUMNS)],
+        name_columns=[str(c).strip().lower() for c in
+                      raw.get("phone_list", {}).get("name_columns", NAME_COLUMNS)],
     )
     validate(cfg)
     return cfg

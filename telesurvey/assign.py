@@ -211,7 +211,9 @@ def build_today(cfg, conn, today: str, force: bool = False) -> Tuple[int, int]:
         log.info("Pulled %d new numbers from phone_pool into call_list (%s)", len(pulled),
                  ", ".join(f"{k}: {v}" for k, v in sorted(by_lang.items())))
     left = sum(callers.room(sid) for sid in callers.open_ids())
-    if left:
+    if left and not plan and not conn.execute("SELECT 1 FROM phone_pool LIMIT 1").fetchone():
+        log.warning("The phone pool is empty: check the phone list (%s)", cfg.phone_list)
+    elif left:
         short = {sid: callers.room(sid) for sid in callers.open_ids()}
         reason = ("Not enough numbers in the right language" if any(s.languages for s in surveyors)
                   else "Not enough numbers left to call")

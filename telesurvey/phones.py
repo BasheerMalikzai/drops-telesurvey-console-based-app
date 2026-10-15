@@ -15,18 +15,36 @@ def norm_phone(value) -> str:
     return "".join(c for c in str(value or "") if c.isdigit())
 
 
-def read_csv(path: Path) -> List[Dict[str, str]]:
+def col_key(name) -> str:
+    """'Phone Number', 'phone-number' and 'phone_number' all become 'phone_number'."""
+    return "_".join(str(name or "").strip().lower().replace("-", " ").split())
+
+
+def read_csv(path: Path, loose_names: bool = True) -> List[Dict[str, str]]:
+    """Read a CSV saved with commas, semicolons or tabs (Excel uses ';' in some regions)."""
     with open(path, newline="", encoding="utf-8-sig") as f:
-        return [{(k or "").strip().lower(): (v or "").strip() for k, v in row.items()}
-                for row in csv.DictReader(f)]
+        sample = f.read(65536)
+        f.seek(0)
+        try:
+            dialect = csv.Sniffer().sniff(sample.split("\n", 1)[0] or sample, delimiters=",;\t")
+        except csv.Error:
+            dialect = csv.excel
+        key = col_key if loose_names else (lambda k: str(k).strip().lower())
+        return [{key(k): (v or "").strip() for k, v in row.items() if k is not None}
+                for row in csv.DictReader(f, dialect=dialect)]
+
+
+def _first_column(row: Dict[str, str], names) -> str:
+    for name in names:
+        if row.get(col_key(name)):
+            return row[col_key(name)]
+    return ""
 
 
 def _language_of(cfg, row: Dict[str, str]) -> str:
     from .config import norm_language
-    for col in cfg.language_columns:
-        if row.get(col):
-            return norm_language(row[col])
-    return ""
+    value = _first_column(row, cfg.language_columns)
+    return norm_language(value) if value else ""
 
 
 def import_phone_list(cfg, conn, today: str) -> int:
@@ -37,8 +55,19 @@ def import_phone_list(cfg, conn, today: str) -> int:
         return 0
     added = skipped = filled = 0
     langs = Counter()
-    for row in read_csv(cfg.phone_list):
-        phone = norm_phone(row.get("phone") or row.get("phone_number"))
+    rows = read_csv(cfg.phone_list)
+    if rows:
+        columns = list(rows[0].keys())
+        if not any(col_key(c) in columns for c in cfg.phone_columns):
+            raise ValueError(
+                f"{cfg.phone_list.name} has no phone-number column. Columns found: {', '.join(columns)}. "
+                f"Rename the phone column to 'phone', or add its name to phone_list.phone_columns "
+                f"in config.json")
+        if not any(col_key(c) in columns for c in cfg.language_columns):
+            log.warning("%s has no language column (looked for: %s); numbers can go to any caller",
+                        cfg.phone_list.name, ", ".join(cfg.language_columns))
+    for row in rows:
+        phone = norm_phone(_first_column(row, cfg.phone_columns))
         if len(phone) < 7:
             skipped += 1
             continue
@@ -46,7 +75,7 @@ def import_phone_list(cfg, conn, today: str) -> int:
         cur = conn.execute(
             "INSERT INTO phone_pool(phone, contact_name, added_on, language) VALUES(?,?,?,?) "
             "ON CONFLICT(phone) DO NOTHING",
-            (phone, row.get("name", ""), today, language or None))
+            (phone, _first_column(row, cfg.name_columns), today, language or None))
         if cur.rowcount:
             added += 1
             langs[language or "no language"] += 1

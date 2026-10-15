@@ -7,7 +7,9 @@
   ],
 
   "phone_list": {
-    "_comment": "Column(s) of data/phone_numbers.csv that hold each respondent's language (Dari, Pashto ...)",
+    "_comment": "Column names accepted in data/phone_numbers.csv (first one found wins; case, spaces and dashes don't matter). Other columns, e.g. province, are ignored.",
+    "phone_columns": ["phone", "phone_number", "mobile", "mobile_number", "number", "phnumber", "contact_number", "tel"],
+    "name_columns": ["name", "contact_name", "full_name", "respondent_name"],
     "language_columns": ["language", "lang"]
   },
 
