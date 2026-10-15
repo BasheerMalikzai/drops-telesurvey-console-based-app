@@ -32,7 +32,7 @@ HOLD_OUTCOME = "awaiting_review"
 
 def load_csv_results(path: Path) -> List[Dict[str, Any]]:
     """Read a KoBo CSV export (must include the _id column)."""
-    rows = read_csv(path)
+    rows = read_csv(path, loose_names=False)
     for r in rows:
         r["_id"] = int(r.get("_id") or 0)
     rows = [r for r in rows if r["_id"]]
