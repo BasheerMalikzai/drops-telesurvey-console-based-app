@@ -8,7 +8,10 @@
 2. If they can't fill today's slots, new numbers are pulled at random from phone_pool
    (numbers not yet in call_list), language by language: just the shortfall, or
    pull.batch_size at a time.
-3. A number only goes to a caller who speaks its language. Rescheduled numbers go back
+3. A number with a caller in the phone list's assigned_to column only ever goes to that
+   caller (language is not checked: whoever made the list chose them). If that caller isn't
+   an active caller in config.json, the number is treated like any other.
+   Other numbers only go to a caller who speaks their language. Rescheduled numbers go back
    to the caller who booked them; otherwise single-language callers are preferred over
    bilingual ones, then the least-loaded caller.
 4. assignments is emptied and refilled with today's draw. phone_pool is never changed.
@@ -32,15 +35,29 @@ def _kind(r) -> str:
     return "retries" if (r["attempts"] or r["last_result"]) else "never called"
 
 
+def _in(column: str, values) -> Tuple[str, list]:
+    values = sorted(values)
+    return f"{column} IN ({','.join('?' * len(values))})", values
+
+
 def pull_numbers(cfg, conn, how_many: int, today: str, languages=None,
-                 include_unknown: bool = True) -> List[str]:
+                 include_unknown: bool = True, owner_keys=None, reserved_keys=None) -> List[str]:
     """Move up to how_many random, not-yet-pulled numbers from phone_pool into call_list.
 
     languages: only numbers in these languages (None = any language).
-    include_unknown: also numbers whose language isn't recorded."""
+    include_unknown: also numbers whose language isn't recorded.
+    owner_keys: only numbers assigned to the caller with these keys (language is then ignored).
+    reserved_keys: leave out numbers assigned to any of these (other callers' numbers)."""
     if how_many <= 0:
         return []
     where, params = ["c.phone IS NULL"], []
+    if owner_keys:
+        cond, vals = _in("LOWER(TRIM(p.assigned_to))", owner_keys)
+        where.append(cond); params += vals
+        languages, include_unknown = None, True
+    elif reserved_keys:
+        cond, vals = _in("LOWER(TRIM(p.assigned_to))", reserved_keys)
+        where.append(f"(p.assigned_to IS NULL OR NOT {cond})"); params += vals
     if languages is not None:
         langs = sorted(languages)
         conds = []
@@ -65,7 +82,8 @@ def pull_numbers(cfg, conn, how_many: int, today: str, languages=None,
     return phones
 
 
-_CANDIDATE_SQL = """SELECT c.*, COALESCE(p.language, '') AS language
+_CANDIDATE_SQL = """SELECT c.*, COALESCE(p.language, '') AS language,
+                           LOWER(TRIM(COALESCE(p.assigned_to, ''))) AS owner_key
                     FROM call_list c LEFT JOIN phone_pool p ON p.phone = c.phone"""
 
 
@@ -79,6 +97,11 @@ class _Callers:
         self.load = {s.id: 0 for s in surveyors}
         self.order = list(self.by_id)
         random.shuffle(self.order)            # random tie-break between equal callers
+        self.owner_of = {k: s.id for s in surveyors for k in s.keys()}   # assigned_to value -> caller
+
+    def owner(self, r):
+        """The caller this number is reserved for in the phone list, if they're working today."""
+        return self.owner_of.get(r.get("owner_key") or "")
 
     def room(self, sid) -> int:
         return self.quota[sid] - self.load[sid]
@@ -88,6 +111,9 @@ class _Callers:
 
     def pick(self, r):
         """Caller for number r, or None if nobody who speaks its language has room."""
+        owner = self.owner(r)
+        if owner is not None:
+            return owner if self.room(owner) > 0 else None
         lang = r.get("language") or ""
         sticky = r.get("last_caller")
         if (self.cfg.sticky_reschedule and r.get("last_result_code") in self.cfg.reschedule_outcomes
@@ -120,6 +146,21 @@ class _Callers:
         return sum(self.room(sid) for sid in self.open_ids() if lang in self.by_id[sid].languages)
 
 
+def _warn_unknown_owners(conn, callers) -> None:
+    """assigned_to values that match no active caller: those numbers go to anyone."""
+    rows = conn.execute("""SELECT TRIM(p.assigned_to) AS who, COUNT(*) AS n FROM phone_pool p
+                           LEFT JOIN call_list c ON c.phone = p.phone
+                           WHERE (c.phone IS NULL OR c.status = 'open')
+                             AND p.assigned_to IS NOT NULL AND TRIM(p.assigned_to) <> ''
+                           GROUP BY TRIM(p.assigned_to)""").fetchall()
+    unknown = [(r["who"], r["n"]) for r in rows if r["who"].lower() not in callers.owner_of]
+    if unknown:
+        log.warning("%d numbers are assigned to callers who aren't active in config.json (%s); "
+                    "they go to any caller. Add the caller, or their name as an alias",
+                    sum(n for _, n in unknown),
+                    ", ".join(f"{w}: {n}" for w, n in sorted(unknown)[:10]) + (" ..." if len(unknown) > 10 else ""))
+
+
 def _warn_unservable(cfg, conn, surveyors) -> None:
     """Numbers in a language that no active caller speaks can never be assigned: say so."""
     if any(not s.languages for s in surveyors):
@@ -129,6 +170,7 @@ def _warn_unservable(cfg, conn, surveyors) -> None:
                            LEFT JOIN call_list c ON c.phone = p.phone
                            WHERE (c.phone IS NULL OR c.status = 'open')
                              AND p.language IS NOT NULL AND p.language <> ''
+                             AND (p.assigned_to IS NULL OR TRIM(p.assigned_to) = '')
                            GROUP BY p.language""").fetchall()
     for r in rows:
         if r["lang"] not in spoken:
@@ -153,6 +195,8 @@ def build_today(cfg, conn, today: str, force: bool = False) -> Tuple[int, int]:
 
     callers = _Callers(cfg, surveyors)
     _warn_unservable(cfg, conn, surveyors)
+    _warn_unknown_owners(conn, callers)
+    reserved = set(callers.owner_of)     # numbers kept for a particular caller
     plan = []
 
     def place_all(rows):
@@ -167,20 +211,30 @@ def build_today(cfg, conn, today: str, force: bool = False) -> Tuple[int, int]:
                 placed += 1
         return placed
 
-    # 1) numbers already in call_list: callbacks due, then retries, then pulled but not called
+    # 0) make sure each caller's own numbers (assigned_to in the phone list) are in call_list
+    pulled: List[str] = []
+    for s in surveyors:
+        mine, keys = _in("LOWER(TRIM(p.assigned_to))", s.keys())
+        have = conn.execute(f"""SELECT COUNT(*) AS n FROM call_list c JOIN phone_pool p ON p.phone = c.phone
+                                WHERE c.status=? AND {mine}""", (OPEN, *keys)).fetchone()["n"]
+        if have < callers.quota[s.id]:
+            pulled += pull_numbers(cfg, conn, callers.quota[s.id] - have, today, owner_keys=s.keys())
+
+    # 1) numbers in call_list: callbacks due, then callers' own numbers, then retries,
+    #    then pulled but not called
     cands = [dict(r) for r in conn.execute(
         _CANDIDATE_SQL + " WHERE c.status=? AND (c.callback_date IS NULL OR c.callback_date<=?)",
         (OPEN, today))]
     random.shuffle(cands)
-    order_of = {"callbacks": 0, "retries": 1, "never called": 2}
-    cands.sort(key=lambda r: order_of[_kind(r)])   # stable: random within each group
+    order_of = {"callbacks": 0, "retries": 2, "never called": 3}
+    cands.sort(key=lambda r: 0 if _kind(r) == "callbacks" else
+               (1 if callers.owner(r) else order_of[_kind(r)]))   # stable: random within each group
     place_all(cands)
 
     # 2) top up from phone_pool, language by language, so every caller gets numbers they can call
-    pulled: List[str] = []
 
     def pull_and_place(n, languages, include_unknown):
-        got = pull_numbers(cfg, conn, n, today, languages, include_unknown)
+        got = pull_numbers(cfg, conn, n, today, languages, include_unknown, reserved_keys=reserved)
         if not got:
             return 0
         pulled.extend(got)
@@ -230,6 +284,9 @@ def build_today(cfg, conn, today: str, force: bool = False) -> Tuple[int, int]:
         conn.execute("INSERT INTO assignments(phone, assign_date, surveyor_id, called) VALUES(?,?,?,0)",
                      (r["phone"], today, sid))
 
+    own = sum(1 for r, sid in plan if callers.owner(r) == sid)
+    if own:
+        log.info("%d numbers went to the caller named in the phone list's assigned_to column", own)
     kinds = {"callbacks": 0, "retries": 0, "never called": 0}
     for r, _ in plan:
         kinds[_kind(r)] += 1

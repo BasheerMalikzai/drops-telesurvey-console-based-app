@@ -296,6 +296,7 @@ Run `inspect` again until it says **Everything is mapped**.
 | `active` | `false` = gets no numbers (on leave, left the team) |
 | `daily_quota` | Optional: numbers per day for this person |
 | `languages` | Languages this caller speaks, e.g. `["dari"]`, `["pashto"]` or both. Callers only get numbers in their languages. Leave it out and the caller can take any language |
+| `aliases` | Optional: other ways the phone list's `assigned_to` column names this caller, e.g. `["Ama Boateng", "12"]` |
 
 ### 8.2 Phone numbers: `data/phone_numbers.csv`
 
@@ -307,7 +308,9 @@ phone,name,language
 
 Only `phone` is required. Spaces, dashes and `+` are removed (numbers are stored
 as digits); rows with fewer than 7 digits are skipped. Add rows at any time:
-known numbers are ignored.
+known numbers are ignored. Columns can also be named `resp_phone_number`,
+`Phone Number`, `mobile`… and `resp_name`…; the file may use commas, semicolons
+or tabs. Other columns (province, weight…) are ignored.
 
 **`language`** is the respondent's language. `Dari`, `dari`, `Persian`, `Farsi`,
 `prs` and `دری` all count as Dari; `Pashto`, `Pushto`, `ps` and `پښتو` as Pashto.
@@ -319,6 +322,17 @@ Another column name can be set in `config.json` under `phone_list.language_colum
 | Number has no language | Any caller may get it; bilingual callers first |
 | Language nobody active speaks (e.g. Uzbek) | Not assigned; the log and report warn how many are waiting |
 | Language column added to the file later | The next run fills in the language for numbers already imported |
+
+**`assigned_to`** (optional) reserves a number for one caller: put the caller's
+`id` (or `name`, or one of their `aliases`) from `config.json`.
+
+| Situation | What happens |
+|---|---|
+| `assigned_to` names an active caller | Only that caller ever gets the number (language isn't checked). Their own numbers come before random ones, after callbacks due |
+| More reserved numbers than the caller's quota | The rest wait for the next days |
+| Empty | Drawn at random as usual |
+| Names someone not active in `config.json` | Treated as empty; the log warns how many |
+| Changed in the file later | The next run follows the new value |
 
 ---
 
