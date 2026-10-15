@@ -56,8 +56,9 @@ class ConfigError(Exception):
 
 # Column names accepted in the phone list (compared in lower case, spaces/dashes ignored)
 PHONE_COLUMNS = ["phone", "phone_number", "phonenumber", "phone_no", "mobile", "mobile_number",
-                 "mobile_no", "number", "phnumber", "contact_number", "tel", "telephone", "cell"]
-NAME_COLUMNS = ["name", "contact_name", "full_name", "respondent_name", "respondent"]
+                 "mobile_no", "number", "phnumber", "contact_number", "tel", "telephone", "cell",
+                 "resp_phone_number", "resp_phone", "respondent_phone", "respondent_phone_number"]
+NAME_COLUMNS = ["name", "contact_name", "full_name", "respondent_name", "respondent", "resp_name"]
 
 
 @dataclass
