@@ -59,6 +59,7 @@ PHONE_COLUMNS = ["phone", "phone_number", "phonenumber", "phone_no", "mobile", "
                  "mobile_no", "number", "phnumber", "contact_number", "tel", "telephone", "cell",
                  "resp_phone_number", "resp_phone", "respondent_phone", "respondent_phone_number"]
 NAME_COLUMNS = ["name", "contact_name", "full_name", "respondent_name", "respondent", "resp_name"]
+ASSIGNED_COLUMNS = ["assigned_to", "assigned_caller", "caller", "caller_id", "surveyor", "surveyor_id"]
 
 
 @dataclass
@@ -69,6 +70,11 @@ class Surveyor:
     active: bool = True
     daily_quota: Optional[int] = None
     languages: List[str] = field(default_factory=list)   # empty = can take any language
+    aliases: List[str] = field(default_factory=list)     # other ways the phone list names this caller
+
+    def keys(self) -> List[str]:
+        """Values in the phone list's assigned_to column that mean this caller (lower case)."""
+        return sorted({k.strip().lower() for k in [self.id, self.name, *self.aliases] if k and k.strip()})
 
     def speaks(self, language: Optional[str]) -> bool:
         return not language or not self.languages or language in self.languages
@@ -135,6 +141,7 @@ class Config:
     language_columns: List[str] = field(default_factory=lambda: ["language", "lang"])
     phone_columns: List[str] = field(default_factory=lambda: list(PHONE_COLUMNS))
     name_columns: List[str] = field(default_factory=lambda: list(NAME_COLUMNS))
+    assigned_columns: List[str] = field(default_factory=lambda: list(ASSIGNED_COLUMNS))
 
     @property
     def kobo_enabled(self) -> bool:
@@ -269,7 +276,8 @@ def load_config(config_path: Optional[Path] = None) -> Config:
         surveyors.append(Surveyor(id=sid, name=str(s.get("name", "")), phone=str(s.get("phone", "")),
                                   active=bool(s.get("active", True)),
                                   daily_quota=int(quota) if quota is not None else None,
-                                  languages=langs))
+                                  languages=langs,
+                                  aliases=[str(a) for a in (s.get("aliases") or [])]))
 
     cfg = Config(
         project_dir=project,
@@ -336,6 +344,8 @@ def load_config(config_path: Optional[Path] = None) -> Config:
                        raw.get("phone_list", {}).get("phone_columns", PHONE_COLUMNS)],
         name_columns=[str(c).strip().lower() for c in
                       raw.get("phone_list", {}).get("name_columns", NAME_COLUMNS)],
+        assigned_columns=[str(c).strip().lower() for c in
+                          raw.get("phone_list", {}).get("assigned_columns", ASSIGNED_COLUMNS)],
     )
     validate(cfg)
     return cfg

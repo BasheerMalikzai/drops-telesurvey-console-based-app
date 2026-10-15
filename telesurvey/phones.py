@@ -63,27 +63,40 @@ def import_phone_list(cfg, conn, today: str) -> int:
                 f"{cfg.phone_list.name} has no phone-number column. Columns found: {', '.join(columns)}. "
                 f"Rename the phone column to 'phone', or add its name to phone_list.phone_columns "
                 f"in config.json")
+        has_owner_col = any(col_key(c) in columns for c in cfg.assigned_columns)
         if not any(col_key(c) in columns for c in cfg.language_columns):
             log.warning("%s has no language column (looked for: %s); numbers can go to any caller",
                         cfg.phone_list.name, ", ".join(cfg.language_columns))
+    else:
+        has_owner_col = False
+    owners_changed = 0
     for row in rows:
         phone = norm_phone(_first_column(row, cfg.phone_columns))
         if len(phone) < 7:
             skipped += 1
             continue
         language = _language_of(cfg, row)
+        owner = _first_column(row, cfg.assigned_columns) or None
         cur = conn.execute(
-            "INSERT INTO phone_pool(phone, contact_name, added_on, language) VALUES(?,?,?,?) "
+            "INSERT INTO phone_pool(phone, contact_name, added_on, language, assigned_to) VALUES(?,?,?,?,?) "
             "ON CONFLICT(phone) DO NOTHING",
-            (phone, _first_column(row, cfg.name_columns), today, language or None))
+            (phone, _first_column(row, cfg.name_columns), today, language or None, owner))
         if cur.rowcount:
             added += 1
             langs[language or "no language"] += 1
-        elif language:
+        else:
+            if has_owner_col:  # the list decides who a number belongs to: follow changes to it
+                owners_changed += conn.execute(
+                    "UPDATE phone_pool SET assigned_to=? WHERE phone=? AND "
+                    "COALESCE(assigned_to, '') <> COALESCE(?, '')", (owner, phone, owner)).rowcount
+            if not language:
+                continue
             filled += conn.execute("UPDATE phone_pool SET language=? WHERE phone=? AND "
                                    "(language IS NULL OR language='')", (language, phone)).rowcount
     log.info("Phone list: %d new numbers added%s, %d invalid rows skipped", added,
              f" ({', '.join(f'{k}: {v}' for k, v in sorted(langs.items()))})" if added else "", skipped)
+    if owners_changed:
+        log.info("Phone list: assigned caller changed for %d numbers already in the pool", owners_changed)
     if filled:
         log.info("Phone list: language filled in for %d numbers already in the pool", filled)
     return added
