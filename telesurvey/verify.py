@@ -287,7 +287,8 @@ def compare_database(rep: Report, cfg, rows: list, day: str) -> None:
 
 def _check_search(rep: Report, cfg, questions) -> None:
     """Questions using the older search('Assignment', ...) appearance (KoboCollect only)."""
-    from .export import COLUMNS
+    from .export import columns
+    COLUMNS = columns(cfg)
     caller = cfg.field_surveyor.split("/")[-1]
     filtered = False
     for q in questions:

@@ -12,7 +12,9 @@
     "name_columns": ["name", "contact_name", "full_name", "respondent_name", "resp_name"],
     "language_columns": ["language", "lang"],
     "_comment_assigned": "A caller's id or name in this column reserves the number for that caller (see SETUP.md)",
-    "assigned_columns": ["assigned_to", "assigned_caller", "caller", "caller_id"]
+    "assigned_columns": ["assigned_to", "assigned_caller", "caller", "caller_id"],
+    "_comment_pass_through": "Phone-list columns copied as they are into the KoBo media file, for pulldata()/search() in the form",
+    "pass_through_columns": ["introduced_by", "Province"]
   },
 
   "assignment": {
