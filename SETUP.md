@@ -106,6 +106,12 @@ form can use:
 | `contact_name` | Respondent name | `pulldata('assignments', 'contact_name', 'name', ${phnumber})` for `auto_resp_name` |
 | `attempt_no`, `previous_outcome` | Call history | Optional hints for the caller |
 | `language` | Respondent's language | Show it to the caller, e.g. `pulldata('assignments', 'language', 'name', ${phnumber})` |
+| `assigned_to`, `resp_phone_number`, `resp_name` | Same as `surveyor_id`, `name`, `contact_name`, under the phone list's names | For forms using the older `search()` appearance, e.g. `minimal search('Assignment', 'matches', 'assigned_to', ${idnumber})` |
+
+The file name (`assignments.csv` by default) is set with `KOBO_MEDIA_FILENAME`
+in `.env`, e.g. `KOBO_MEDIA_FILENAME="Assignment.csv"`. With `search()`, use
+`matches` rather than `contains` for the caller ID (otherwise ID 232 also sees
+2323's numbers); note that `search()` works in KoboCollect only, not in web forms.
 
 Deploy the form. You don't need to upload `assignments.csv` by hand: the first
 run uploads it and redeploys the form. The tool's names are configurable
