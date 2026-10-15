@@ -37,7 +37,8 @@ def _schema(serial: str, bigint: str) -> list:
         """CREATE TABLE IF NOT EXISTS phone_pool(
             phone TEXT PRIMARY KEY,
             contact_name TEXT,
-            added_on TEXT)""",
+            added_on TEXT,
+            language TEXT)""",
         """CREATE TABLE IF NOT EXISTS call_list(
             phone TEXT PRIMARY KEY,
             pulled_on TEXT NOT NULL,
@@ -75,6 +76,7 @@ TABLES = ["phone_pool", "call_list", "assignments", "submissions", "meta"]
 # Columns added to submissions after the first release (older databases get them automatically).
 # applied defaults to 1 so submissions recorded by older versions count as already applied.
 NEW_COLUMNS = {
+    "phone_pool": [("language", "TEXT")],
     "submissions": [("validation", "TEXT"),
                     ("applied", "INTEGER NOT NULL DEFAULT 1"),
                     ("submit_date", "TEXT")],

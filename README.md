@@ -26,7 +26,7 @@ computer: no web server or public address needed.
     ./setup.sh                     # or: ./setup.sh --pythonanywhere
     nano config.json               # your surveyors and report recipients
     .venv/bin/python -m telesurvey inspect   # map your form's call-result codes
-    nano data/phone_numbers.csv    # columns: phone,name
+    nano data/phone_numbers.csv    # columns: phone,name,language
     ./daily.sh --no-upload         # test run
     ./setup.sh --schedule          # morning run + sync (launchd on a Mac, cron on Linux)
     ./setup.sh --wake              # Mac: wake up before the morning run

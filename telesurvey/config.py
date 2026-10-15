@@ -26,6 +26,19 @@ CATEGORY_LABELS = {"successful": "Successful", "rescheduled": "Rescheduled", "de
                    "no_pickup": "Didn't pick up", "busy": "Busy", "invalid": "Invalid number"}
 VALID_ACTIONS = ("done", "retry", "callback")
 
+# Spellings of a language that mean the same thing (all lower case)
+LANGUAGE_ALIASES = {
+    "dari": "dari", "persian": "dari", "farsi": "dari", "prs": "dari", "fa": "dari", "دری": "dari",
+    "pashto": "pashto", "pashtu": "pashto", "pushto": "pashto", "ps": "pashto", "pus": "pashto", "پښتو": "pashto",
+}
+
+
+def norm_language(value) -> str:
+    """'Dari' / 'Persian' / 'prs' -> 'dari'; '' if empty. Unknown names are kept, lower-cased."""
+    v = str(value or "").strip().lower()
+    return LANGUAGE_ALIASES.get(v, v)
+
+
 # KoBo validation statuses
 VALIDATION_APPROVED = "validation_status_approved"
 VALIDATION_REJECTED = "validation_status_not_approved"
@@ -48,6 +61,10 @@ class Surveyor:
     phone: str = ""
     active: bool = True
     daily_quota: Optional[int] = None
+    languages: List[str] = field(default_factory=list)   # empty = can take any language
+
+    def speaks(self, language: Optional[str]) -> bool:
+        return not language or not self.languages or language in self.languages
 
 
 @dataclass
@@ -108,6 +125,7 @@ class Config:
     config_path: Optional[Path] = None
 
     surveyors: List[Surveyor] = field(default_factory=list)
+    language_columns: List[str] = field(default_factory=lambda: ["language", "lang"])
 
     @property
     def kobo_enabled(self) -> bool:
@@ -235,9 +253,14 @@ def load_config(config_path: Optional[Path] = None) -> Config:
         if not sid:
             raise ConfigError(f"Surveyor #{i} in config.json has no 'id'")
         quota = s.get("daily_quota")
+        langs = s.get("languages", s.get("language", []))
+        if isinstance(langs, str):
+            langs = langs.replace(";", ",").split(",")
+        langs = sorted({norm_language(x) for x in langs if norm_language(x)})
         surveyors.append(Surveyor(id=sid, name=str(s.get("name", "")), phone=str(s.get("phone", "")),
                                   active=bool(s.get("active", True)),
-                                  daily_quota=int(quota) if quota is not None else None))
+                                  daily_quota=int(quota) if quota is not None else None,
+                                  languages=langs))
 
     cfg = Config(
         project_dir=project,
@@ -298,6 +321,8 @@ def load_config(config_path: Optional[Path] = None) -> Config:
         sync_overlap_minutes=int(sched.get("sync_overlap_minutes", 60)),
         config_path=config_path,
         surveyors=surveyors,
+        language_columns=[str(c).strip().lower() for c in
+                          raw.get("phone_list", {}).get("language_columns", ["language", "lang"])],
     )
     validate(cfg)
     return cfg
