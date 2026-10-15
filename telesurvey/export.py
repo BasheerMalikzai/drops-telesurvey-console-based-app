@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import logging
 from collections import Counter
 from pathlib import Path
@@ -16,7 +17,13 @@ COLUMNS = ["name", "label", "surveyor_id", "contact_name", "attempt_no", "previo
            "assigned_to", "resp_phone_number", "resp_name"]
 
 
-_QUERY = """SELECT a.phone, a.surveyor_id, a.called, p.contact_name, p.language,
+def columns(cfg=None):
+    """Header of the media file: fixed columns, then the phone list's pass-through columns."""
+    extra = [c for c in (cfg.pass_through_columns if cfg else []) if c not in COLUMNS]
+    return COLUMNS + extra
+
+
+_QUERY = """SELECT a.phone, a.surveyor_id, a.called, p.contact_name, p.language, p.extra,
                     c.attempts, c.last_result_code, c.status
              FROM assignments a
              JOIN call_list c ON c.phone = a.phone
@@ -24,19 +31,25 @@ _QUERY = """SELECT a.phone, a.surveyor_id, a.called, p.contact_name, p.language,
              WHERE a.assign_date=? ORDER BY a.surveyor_id, a.phone"""
 
 
-def _write(path: Path, rows, today: str) -> None:
+def _write(cfg, path: Path, rows, today: str) -> None:
     """Write atomically, so KoBo is never sent a half-written file."""
     tmp = path.with_suffix(path.suffix + ".tmp")
+    extra_cols = columns(cfg)[len(COLUMNS):]
     with open(tmp, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(COLUMNS)  # 'name' and 'label' are what select_one_from_file needs
+        w.writerow(columns(cfg))  # 'name' and 'label' are what select_one_from_file needs
         for r in rows:
             label = f"{r['phone']} - {r['contact_name']}" if r["contact_name"] else r["phone"]
             # attempts was already increased if a result came in today, so use the stored count
             attempt = r["attempts"] + (0 if r["called"] else 1)
+            try:
+                extra = json.loads(r["extra"]) if r["extra"] else {}
+            except ValueError:
+                extra = {}
             w.writerow([r["phone"], label, r["surveyor_id"], r["contact_name"] or "",
                         attempt, r["last_result_code"] or "", today, r["language"] or "",
-                        r["surveyor_id"], r["phone"], r["contact_name"] or ""])
+                        r["surveyor_id"], r["phone"], r["contact_name"] or ""]
+                       + [extra.get(c, "") for c in extra_cols])
     tmp.replace(path)
 
 
@@ -48,7 +61,7 @@ def export_csv(cfg, conn, today: str) -> Optional[Path]:
         return None
     cfg.output_dir.mkdir(parents=True, exist_ok=True)
     dated = cfg.output_dir / f"assignments_{today}.csv"
-    _write(dated, rows, today)
+    _write(cfg, dated, rows, today)
     per = Counter(r["surveyor_id"] for r in rows)
     log.info("Wrote %s (per surveyor: %s)", dated, dict(sorted(per.items())))
     return export_remaining(cfg, conn, today, rows)
@@ -63,7 +76,7 @@ def export_remaining(cfg, conn, today: str, rows=None, quiet: bool = False) -> O
     remaining = [r for r in rows if not r["called"] and r["status"] == "open"]
     cfg.output_dir.mkdir(parents=True, exist_ok=True)
     media = cfg.output_dir / cfg.media_filename
-    _write(media, remaining, today)
+    _write(cfg, media, remaining, today)
     (log.debug if quiet else log.info)("Upload list: %d of %d numbers still to call", len(remaining), len(rows))
     return media
 

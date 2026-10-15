@@ -59,6 +59,7 @@ PHONE_COLUMNS = ["phone", "phone_number", "phonenumber", "phone_no", "mobile", "
                  "mobile_no", "number", "phnumber", "contact_number", "tel", "telephone", "cell",
                  "resp_phone_number", "resp_phone", "respondent_phone", "respondent_phone_number"]
 NAME_COLUMNS = ["name", "contact_name", "full_name", "respondent_name", "respondent", "resp_name"]
+PASS_THROUGH_COLUMNS = ["introduced_by", "Province"]
 ASSIGNED_COLUMNS = ["assigned_to", "assigned_caller", "caller", "caller_id", "surveyor", "surveyor_id"]
 
 
@@ -142,6 +143,8 @@ class Config:
     phone_columns: List[str] = field(default_factory=lambda: list(PHONE_COLUMNS))
     name_columns: List[str] = field(default_factory=lambda: list(NAME_COLUMNS))
     assigned_columns: List[str] = field(default_factory=lambda: list(ASSIGNED_COLUMNS))
+    # phone-list columns copied as they are into the KoBo media file (for pulldata/search in the form)
+    pass_through_columns: List[str] = field(default_factory=lambda: list(PASS_THROUGH_COLUMNS))
 
     @property
     def kobo_enabled(self) -> bool:
@@ -346,6 +349,9 @@ def load_config(config_path: Optional[Path] = None) -> Config:
                       raw.get("phone_list", {}).get("name_columns", NAME_COLUMNS)],
         assigned_columns=[str(c).strip().lower() for c in
                           raw.get("phone_list", {}).get("assigned_columns", ASSIGNED_COLUMNS)],
+        pass_through_columns=[str(c).strip() for c in
+                              raw.get("phone_list", {}).get("pass_through_columns", PASS_THROUGH_COLUMNS)
+                              if str(c).strip()],
     )
     validate(cfg)
     return cfg

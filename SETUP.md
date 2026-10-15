@@ -106,6 +106,7 @@ form can use:
 | `contact_name` | Respondent name | `pulldata('assignments', 'contact_name', 'name', ${phnumber})` for `auto_resp_name` |
 | `attempt_no`, `previous_outcome` | Call history | Optional hints for the caller |
 | `language` | Respondent's language | Show it to the caller, e.g. `pulldata('assignments', 'language', 'name', ${phnumber})` |
+| `introduced_by`, `Province` | Copied from the phone list as they are (set the list in `phone_list.pass_through_columns` in `config.json`) | `pulldata('Assignment', 'introduced_by', 'resp_phone_number', ${phnumber})` |
 | `assigned_to`, `resp_phone_number`, `resp_name` | Same as `surveyor_id`, `name`, `contact_name`, under the phone list's names | For forms using the older `search()` appearance, e.g. `minimal search('Assignment', 'matches', 'assigned_to', ${idnumber})` |
 
 The file name (`assignments.csv` by default) is set with `KOBO_MEDIA_FILENAME`

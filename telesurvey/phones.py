@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import logging
 from collections import Counter
 from pathlib import Path
@@ -47,6 +48,12 @@ def _language_of(cfg, row: Dict[str, str]) -> str:
     return norm_language(value) if value else ""
 
 
+def _extra_of(cfg, row: Dict[str, str]):
+    """Pass-through columns of this row as JSON (None if the list has none of them)."""
+    present = {c: row[col_key(c)] for c in cfg.pass_through_columns if col_key(c) in row}
+    return json.dumps(present, ensure_ascii=False, sort_keys=True) if present else None
+
+
 def import_phone_list(cfg, conn, today: str) -> int:
     """Add new numbers to phone_pool. For numbers already there, only a missing language is
     filled in (so a language column can be added to the phone list later)."""
@@ -77,14 +84,18 @@ def import_phone_list(cfg, conn, today: str) -> int:
             continue
         language = _language_of(cfg, row)
         owner = _first_column(row, cfg.assigned_columns) or None
+        extra = _extra_of(cfg, row)
         cur = conn.execute(
-            "INSERT INTO phone_pool(phone, contact_name, added_on, language, assigned_to) VALUES(?,?,?,?,?) "
-            "ON CONFLICT(phone) DO NOTHING",
-            (phone, _first_column(row, cfg.name_columns), today, language or None, owner))
+            "INSERT INTO phone_pool(phone, contact_name, added_on, language, assigned_to, extra) "
+            "VALUES(?,?,?,?,?,?) ON CONFLICT(phone) DO NOTHING",
+            (phone, _first_column(row, cfg.name_columns), today, language or None, owner, extra))
         if cur.rowcount:
             added += 1
             langs[language or "no language"] += 1
         else:
+            if extra is not None:  # keep pass-through values (introduced_by, province ...) up to date
+                conn.execute("UPDATE phone_pool SET extra=? WHERE phone=? AND COALESCE(extra, '') <> ?",
+                             (extra, phone, extra))
             if has_owner_col:  # the list decides who a number belongs to: follow changes to it
                 owners_changed += conn.execute(
                     "UPDATE phone_pool SET assigned_to=? WHERE phone=? AND "
