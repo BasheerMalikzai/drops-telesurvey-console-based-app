@@ -231,7 +231,10 @@ def load_dotenv(path: Path) -> None:
     for key, value in values.items():
         if value != "":   # a blank line in .env means "not set", not "empty"
             os.environ.setdefault(key, value)
-    # TZ=Africa/Accra (etc.) makes "today" your local day even on a UTC server
+    # TZ=Asia/Kabul (etc.) makes "today" your local day even on a UTC server. Hosts such as
+    # PythonAnywhere set TZ=UTC for every process, so the time zone in .env wins over that.
+    if values.get("TZ"):
+        os.environ["TZ"] = values["TZ"]
     if os.environ.get("TZ") and hasattr(time, "tzset"):
         time.tzset()
 
