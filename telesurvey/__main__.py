@@ -204,6 +204,17 @@ def cmd_report(cfg, args) -> int:
     return 0
 
 
+def cmd_f2f_report(cfg, args) -> int:
+    from . import f2f
+    if args.day:
+        try:
+            dt.date.fromisoformat(args.day)
+        except ValueError:
+            print(f"--day must be a date like 2026-10-28, not {args.day!r}", file=sys.stderr)
+            return 1
+    return f2f.run(cfg, dt.date.today().isoformat(), args.day, send=not args.print_only)
+
+
 def cmd_test_email(cfg, args) -> int:
     from .report import send_email
     to = args.to or cfg.report_recipients
@@ -472,6 +483,10 @@ def main(argv=None) -> int:
     rpt.add_argument("--print", action="store_true", help="print instead of emailing")
     rpt.add_argument("--date", dest="report_date", default=None, help="day of calls to report (default: yesterday)")
     rpt.add_argument("--to", nargs="+", help="send to these addresses instead of report.recipients")
+    ff = sub.add_parser("f2f-report", help="email the face-to-face survey's daily progress report")
+    ff.add_argument("--day", help="report on this date (YYYY-MM-DD) instead of yesterday")
+    ff.add_argument("--print", dest="print_only", action="store_true",
+                    help="print the report here instead of emailing it")
     te = sub.add_parser("test-email", help="send a test email to check the mail settings")
     te.add_argument("--to", nargs="+", help="send to these addresses instead of report.recipients")
     sr = sub.add_parser("set-recipients", help="set the report email addresses (saved in config.json)")
@@ -514,7 +529,7 @@ def main(argv=None) -> int:
                 "sync": cmd_sync, "schedule": cmd_schedule, "set-schedule": cmd_set_schedule, "refresh": cmd_refresh,
                 "import-sqlite": cmd_import_sqlite,
                 "set-refresh": cmd_set_refresh, "verify": cmd_verify, "inspect": cmd_inspect,
-                "report": cmd_report, "test-email": cmd_test_email, "set-recipients": cmd_set_recipients,
+                "report": cmd_report, "test-email": cmd_test_email, "f2f-report": cmd_f2f_report, "set-recipients": cmd_set_recipients,
                 "pull": cmd_pull, "reopen": cmd_reopen, "remove": cmd_remove}
     try:
         return handlers[args.command](cfg, args)
