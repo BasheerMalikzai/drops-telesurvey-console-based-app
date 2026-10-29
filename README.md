@@ -38,6 +38,7 @@ computer: no web server or public address needed.
 | `setup.sh` | Install, configure, test, schedule; safe to re-run |
 | `daily.sh` | The morning run |
 | `sync.sh` | The sync job during the day |
+| `f2f_report.sh` | Daily progress email for the face-to-face survey (separate KoBo form) |
 | `verify_kobo_media.py` | Checks that `assignments.csv` reached KoBo and works as a form attachment |
 | `config.json` | Surveyors, call-result categories, form field names, report recipients, schedule |
 | `.env` | Private: KoBo token, PostgreSQL and mail-server credentials, time zone |

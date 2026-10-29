@@ -64,6 +64,23 @@
     "subject_prefix": "[Telesurvey]"
   },
 
+  "face_to_face": {
+    "_comment": "Daily progress email for the face-to-face form: ./f2f_report.sh (see OPERATIONS.md). recipients empty = same as report.recipients",
+    "form_uid": "",
+    "surveyor_field": "idnumber",
+    "date_field": "_submission_time",
+    "breakdown_field": "Province",
+    "start_date": "",
+    "daily_target": 10,
+    "report_day": "yesterday",
+    "subject_prefix": "[Face-to-face]",
+    "recipients": [],
+    "surveyors": [
+      { "id": "501", "name": "Surveyor A" },
+      { "id": "502", "name": "Surveyor B", "daily_target": 12 }
+    ]
+  },
+
   "schedule": {
     "_comment": "Installed with ./setup.sh --schedule. sync_every_minutes: 20-360, or 0 = no syncing during the day",
     "morning_run": "06:00",
