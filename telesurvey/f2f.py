@@ -1,9 +1,9 @@
 """Daily progress report for the face-to-face survey (a separate KoBo form).
 
 Reads every submission of the face-to-face form (same KoBo account and token as the
-telesurvey) and emails: per surveyor and per province (the province set for each surveyor in
-config.json), interviews on the report day and in total; then a day-by-day table per
-surveyor. Optionally also broken down by a form field. It doesn't use the database or the phone pool, and changes nothing in KoBo.
+telesurvey) and emails, per province and per surveyor (the province set for each surveyor in
+config.json): surveys on the last day (the report day) and in total. Optionally a
+day-by-day table (days_shown) and a breakdown by a form field. It doesn't use the database or the phone pool, and changes nothing in KoBo.
 
 Settings: the "face_to_face" section of config.json; the mail server comes from .env.
 """
@@ -42,7 +42,7 @@ class F2FSettings:
     date_field: str = "_submission_time"
     breakdown_field: str = ""
     start_date: str = ""
-    days_shown: int = 31                   # day-by-day table: most recent days (0 = no table)
+    days_shown: int = 0                    # optional day-by-day table: most recent days (0 = none)
     report_day: str = "yesterday"          # or "today"
     subject_prefix: str = "[Face-to-face]"
     recipients: List[str] = field(default_factory=list)
@@ -80,7 +80,7 @@ def load_settings(cfg) -> F2FSettings:
         date_field=str(sec.get("date_field", "_submission_time")),
         breakdown_field=str(sec.get("breakdown_field", "")),
         start_date=start,
-        days_shown=max(0, int(sec.get("days_shown", 31))),
+        days_shown=max(0, int(sec.get("days_shown", 0))),
         report_day=report_day,
         subject_prefix=str(sec.get("subject_prefix", "[Face-to-face]")),
         recipients=[str(r).strip() for r in sec.get("recipients", []) if str(r).strip()],
@@ -138,7 +138,7 @@ class Progress:
     form_name: str
     surveyors: list            # [surveyor, province, report day, total]
     s_total: list
-    provinces: list            # [province, surveyors, active on the report day, report day, total]
+    provinces: list            # [province, report day, total]
     p_total: list
     days: List[str]            # day-by-day table: dates shown, oldest first
     hidden_days: int
@@ -196,9 +196,8 @@ def summarise(st: F2FSettings, form_name: str, records: list, day: str) -> Progr
         r[3] += day_of[sid]
         r[4] += total_of[sid]
     prows = sorted(pv.values(), key=lambda r: (r[0].startswith("("), r[0].lower()))
-    p_total = ["Total"] + [sum(r[n] for r in prows) for n in range(1, 5)]
-    prows = [[r[0], r[1], f"{r[2]} of {r[1]}" if r[1] else "-", r[3], r[4]] for r in prows]
-    p_total = [p_total[0], p_total[1], f"{p_total[2]} of {p_total[1]}", p_total[3], p_total[4]]
+    prows = [[r[0], r[3], r[4]] for r in prows]
+    p_total = ["Total", sum(r[1] for r in prows), sum(r[2] for r in prows)]
 
     # 3) day by day per surveyor
     days, hidden, daily, d_total = [], 0, [], []
@@ -233,14 +232,14 @@ def _short(d: str) -> str:
 
 def build(st: F2FSettings, p: Progress) -> tuple:
     active = sum(1 for s in st.surveyors if s.active)
-    subject = (f"{st.subject_prefix} Daily progress {p.day}: {p.on_day} interviews"
+    subject = (f"{st.subject_prefix} Daily progress {p.day}: {p.on_day} surveys"
                + (f" ({p.working}/{active} surveyors)" if active else ""))
     since = st.start_date or p.first_day or "-"
     last = _short(p.day)
     facts = [("Report date", p.day), ("Form", p.form_name),
-             ("Interviews on the day", str(p.on_day)),
-             ("Surveyors with interviews", f"{p.working} of {active}" if active else "-"),
-             ("Interviews since " + since, str(p.all_time))]
+             ("Surveys on the last day", str(p.on_day)),
+             ("Surveyors who surveyed on the last day", f"{p.working} of {active}" if active else "-"),
+             ("Total surveys since " + since, str(p.all_time))]
     h3 = '<h3 style="font:bold 15px Arial,sans-serif;margin:16px 0 4px">'
     text = [f"Face-to-face survey: daily progress for {p.day}", "", _kv_text(facts)]
     body = [f'<h2 style="font:bold 18px Arial,sans-serif;margin:0 0 8px">Face-to-face survey: '
@@ -254,11 +253,12 @@ def build(st: F2FSettings, p: Progress) -> tuple:
         text.extend(["", msg])
         body.append(f'<p style="font:{size}px Arial,sans-serif;color:{color}">{html.escape(msg)}</p>')
 
-    section("By province", ["Province", "Surveyors", "Working on " + last, last, "Total"],
-            p.provinces, p.p_total)
-    section("By surveyor", ["Surveyor", "Province", last, "Total"], p.surveyors, p.s_total)
+    last_col = f"Last day ({last})"
+    total_col = f"Total since {_short(since)}" if since != "-" else "Total"
+    section("Per province", ["Province", last_col, total_col], p.provinces, p.p_total)
+    section("Per surveyor", ["Surveyor", "Province", last_col, total_col], p.surveyors, p.s_total)
     if p.idle:
-        para(f"No interviews on {p.day}: " + ", ".join(p.idle), color="#9a6700")
+        para(f"No surveys on {p.day}: " + ", ".join(p.idle), color="#9a6700")
     if p.unknown:
         para("Submissions from accounts/IDs that aren't in face_to_face.surveyors (check who sent them, "
              "or add them to config.json): " + ", ".join(f"{k} ({v})" for k, v in p.unknown.items()))

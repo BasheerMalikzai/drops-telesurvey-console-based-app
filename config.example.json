@@ -72,7 +72,7 @@
     "date_field": "_submission_time",
     "breakdown_field": "",
     "start_date": "",
-    "days_shown": 31,
+    "days_shown": 0,
     "report_day": "yesterday",
     "subject_prefix": "[Face-to-face]",
     "recipients": [],
