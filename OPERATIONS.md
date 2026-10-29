@@ -112,18 +112,18 @@ says `Could not send the email report: …`.
 ### Face-to-face progress report
 
 A separate daily email for the face-to-face survey, which uses its own KoBo form
-in the same account. `./f2f_report.sh` reads that form and sends, per surveyor:
-interviews on the report day, the daily target and % reached, the last 7 days
-and the total, plus surveyors with no interviews, unknown IDs and (optionally) a
-breakdown by a field such as Province. It uses the same KoBo token and mail
+in the same account. `./f2f_report.sh` reads that form and sends a table with
+one row per surveyor and one column per day (interviews that day), plus the
+total; then the surveyors with no interviews on the report day, unknown IDs
+and (optionally) the same table broken down by a field such as Province. It uses the same KoBo token and mail
 server, and changes nothing in KoBo or the database.
 
 | Setting (`config.json` → `face_to_face`) | Meaning |
 |---|---|
 | `form_uid` | The face-to-face form's UID (in its URL after `/forms/`) |
-| `surveyors` | `[{ "id": "501", "name": "…", "daily_target": 12, "active": true }]`; `id` = what they enter in the ID question |
+| `surveyors` | `[{ "id": "501", "name": "…", "active": true }]`; `id` = what they enter in the ID question |
 | `surveyor_field` | Question holding the surveyor ID (default `idnumber`; falls back to `_submitted_by`) |
-| `daily_target` | Default target per surveyor per day (`0` = no target column) |
+| `days_shown` | How many of the most recent days get a column (default 31; earlier days still count in Total) |
 | `breakdown_field` | Optional question to break totals down by, e.g. `Province` (empty = none) |
 | `date_field` | Which date counts: `_submission_time` (default) or a form field such as `today` |
 | `start_date` | Count from this date (e.g. `2026-10-01`); empty = all submissions |

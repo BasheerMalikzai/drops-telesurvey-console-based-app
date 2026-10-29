@@ -3,8 +3,8 @@
 # f2f_report.sh - email the face-to-face survey's daily progress report.
 #
 # Reads the face-to-face KoBo form set in config.json ("face_to_face") and emails,
-# per surveyor: interviews on the report day (yesterday by default), % of the daily
-# target, last 7 days and total. Changes nothing in KoBo or the database.
+# per surveyor: interviews on each day up to the report day (yesterday by default)
+# and the total. Changes nothing in KoBo or the database.
 #
 #   ./f2f_report.sh                     # email yesterday's report
 #   ./f2f_report.sh --print             # show it here instead of emailing

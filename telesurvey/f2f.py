@@ -1,9 +1,8 @@
 """Daily progress report for the face-to-face survey (a separate KoBo form).
 
 Reads every submission of the face-to-face form (same KoBo account and token as the
-telesurvey) and emails, per surveyor: interviews on the report day, against their daily
-target, over the last 7 days and in total. Optionally broken down by a form field such as
-Province. It doesn't use the database or the phone pool, and changes nothing in KoBo.
+telesurvey) and emails, per surveyor, the number of interviews on each day up to the report
+day, and the total. Optionally broken down by a form field such as Province. It doesn't use the database or the phone pool, and changes nothing in KoBo.
 
 Settings: the "face_to_face" section of config.json; the mail server comes from .env.
 """
@@ -30,7 +29,6 @@ ALL_TIME = "2000-01-01T00:00:00"
 class F2FSurveyor:
     id: str
     name: str = ""
-    daily_target: Optional[int] = None
     active: bool = True
 
 
@@ -42,14 +40,11 @@ class F2FSettings:
     date_field: str = "_submission_time"
     breakdown_field: str = ""
     start_date: str = ""
-    daily_target: int = 0
+    days_shown: int = 31                   # most recent days shown as columns
     report_day: str = "yesterday"          # or "today"
     subject_prefix: str = "[Face-to-face]"
     recipients: List[str] = field(default_factory=list)
     surveyors: List[F2FSurveyor] = field(default_factory=list)
-
-    def target(self, s: F2FSurveyor) -> int:
-        return s.daily_target if s.daily_target is not None else self.daily_target
 
 
 def load_settings(cfg) -> F2FSettings:
@@ -65,9 +60,7 @@ def load_settings(cfg) -> F2FSettings:
         sid = str(s.get("id", "")).strip()
         if not sid:
             raise ConfigError(f"face_to_face.surveyors #{i} has no 'id'")
-        t = s.get("daily_target")
-        people.append(F2FSurveyor(id=sid, name=str(s.get("name", "")), active=bool(s.get("active", True)),
-                                  daily_target=int(t) if t is not None else None))
+        people.append(F2FSurveyor(id=sid, name=str(s.get("name", "")), active=bool(s.get("active", True))))
     report_day = str(sec.get("report_day", "yesterday"))
     if report_day not in ("yesterday", "today"):
         raise ConfigError("face_to_face.report_day must be \"yesterday\" or \"today\"")
@@ -84,7 +77,7 @@ def load_settings(cfg) -> F2FSettings:
         date_field=str(sec.get("date_field", "_submission_time")),
         breakdown_field=str(sec.get("breakdown_field", "")),
         start_date=start,
-        daily_target=int(sec.get("daily_target", 0) or 0),
+        days_shown=max(1, int(sec.get("days_shown", 31) or 31)),
         report_day=report_day,
         subject_prefix=str(sec.get("subject_prefix", "[Face-to-face]")),
         recipients=[str(r).strip() for r in sec.get("recipients", []) if str(r).strip()],
@@ -140,104 +133,115 @@ def fetch(cfg, st: F2FSettings) -> tuple:
 class Progress:
     day: str
     form_name: str
-    rows: list                 # per surveyor: (label, day, target, pct, week, total)
-    totals: tuple
-    breakdown: list            # (value, day, week, total)
+    days: List[str]            # dates shown as columns, oldest first
+    hidden_days: int           # earlier days not shown (still in the totals)
+    rows: list                 # per surveyor: [label, count per day ..., total]
+    totals: list
+    breakdown: list            # [value, count per day ..., total]
+    on_day: int                # interviews on the report day
     idle: List[str]            # active surveyors with nothing on the report day
+    working: int               # active surveyors with at least one interview on the report day
     unknown: Dict[str, int]    # IDs in submissions that aren't in the list
     first_day: Optional[str]
-    n_all: int
 
 
 def summarise(st: F2FSettings, form_name: str, records: list, day: str) -> Progress:
-    d = dt.date.fromisoformat(day)
-    week_start = (d - dt.timedelta(days=6)).isoformat()
-    by_day, by_week, by_total = Counter(), Counter(), Counter()
-    bd_day, bd_week, bd_total = Counter(), Counter(), Counter()
-    days = []
+    per = Counter()            # (surveyor, date) -> interviews
+    per_b = Counter()          # (breakdown value, date)
+    seen = set()
     for rec in records:
         when = local_day(rec, st.date_field)
         if not when or (st.start_date and when < st.start_date) or when > day:
             continue
-        days.append(when)
+        seen.add(when)
         who = surveyor_of(rec, st) or "(no ID)"
-        by_total[who] += 1
-        b = str(get_field(rec, st.breakdown_field) or "(blank)").strip() if st.breakdown_field else None
-        if b is not None:
-            bd_total[b] += 1
-        if when >= week_start:
-            by_week[who] += 1
-            if b is not None:
-                bd_week[b] += 1
-        if when == day:
-            by_day[who] += 1
-            if b is not None:
-                bd_day[b] += 1
+        per[(who, when)] += 1
+        if st.breakdown_field:
+            per_b[(str(get_field(rec, st.breakdown_field) or "(blank)").strip(), when)] += 1
+
+    first = st.start_date or (min(seen) if seen else day)
+    d0, d1 = dt.date.fromisoformat(first), dt.date.fromisoformat(day)
+    all_days = [(d0 + dt.timedelta(days=k)).isoformat() for k in range((d1 - d0).days + 1)] or [day]
+    days = all_days[-st.days_shown:]
+    hidden = len(all_days) - len(days)
+
+    def line(label, key, counter):
+        counts = [counter[(key, x)] for x in days]
+        return [label] + counts + [sum(v for (k, _), v in counter.items() if k == key)]
 
     known = {s.id for s in st.surveyors}
-    rows, idle = [], []
-    t_day = t_target = t_week = t_total = 0
+    totals_by_who = Counter()
+    for (who, _), v in per.items():
+        totals_by_who[who] += v
+    rows, idle, working = [], [], 0
     for s in st.surveyors:
-        if not s.active and not by_total[s.id]:
+        if not s.active and not totals_by_who[s.id]:
             continue
-        target = st.target(s) if s.active else 0
-        pct = f"{round(100 * by_day[s.id] / target)}%" if target else "-"
-        label = f"{s.id} {s.name}".strip() + ("" if s.active else " (inactive)")
-        rows.append((label, by_day[s.id], target or "-", pct, by_week[s.id], by_total[s.id]))
-        if s.active and not by_day[s.id]:
-            idle.append(f"{s.id} {s.name}".strip())
-        t_day += by_day[s.id]; t_target += target; t_week += by_week[s.id]; t_total += by_total[s.id]
-    unknown = {k: v for k, v in by_total.items() if k not in known}
+        rows.append(line(f"{s.id} {s.name}".strip() + ("" if s.active else " (inactive)"), s.id, per))
+        if s.active:
+            if per[(s.id, day)]:
+                working += 1
+            else:
+                idle.append(f"{s.id} {s.name}".strip())
+    unknown = {k: v for k, v in totals_by_who.items() if k not in known}
     for k in sorted(unknown, key=lambda k: -unknown[k]):
-        rows.append((f"{k} (not in list)", by_day[k], "-", "-", by_week[k], by_total[k]))
-        t_day += by_day[k]; t_week += by_week[k]; t_total += by_total[k]
-    pct = f"{round(100 * t_day / t_target)}%" if t_target else "-"
-    totals = ("Total", t_day, t_target or "-", pct, t_week, t_total)
-    breakdown = [(k, bd_day[k], bd_week[k], bd_total[k])
-                 for k in sorted(bd_total, key=lambda k: (-bd_total[k], k))]
-    return Progress(day=day, form_name=form_name, rows=rows, totals=totals, breakdown=breakdown,
-                    idle=idle, unknown=unknown, first_day=min(days) if days else None, n_all=len(days))
+        rows.append(line(f"{k} (not in list)", k, per))
+    totals = ["Total"] + [sum(r[1 + n] for r in rows) for n in range(len(days))] + [sum(r[-1] for r in rows)]
+
+    values = sorted({k for (k, _) in per_b}, key=lambda k: (-sum(v for (b, _), v in per_b.items() if b == k), k))
+    breakdown = [line(v, v, per_b) for v in values]
+    return Progress(day=day, form_name=form_name, days=days, hidden_days=hidden, rows=rows, totals=totals,
+                    breakdown=breakdown, on_day=per_total_on(per, day), idle=idle, working=working,
+                    unknown=unknown, first_day=min(seen) if seen else None)
+
+
+def per_total_on(per: Counter, day: str) -> int:
+    return sum(v for (_, d), v in per.items() if d == day)
 
 
 # --------------------------------------------------------------------------- email
 
-COLS = ["Surveyor", "Interviews", "Target", "% of target", "Last 7 days", "Total"]
+def _short(d: str) -> str:
+    return dt.date.fromisoformat(d).strftime("%d %b")
 
 
 def build(st: F2FSettings, p: Progress) -> tuple:
     active = sum(1 for s in st.surveyors if s.active)
-    working = active - len(p.idle)
-    subject = (f"{st.subject_prefix} Daily progress {p.day}: {p.totals[1]} interviews"
-               + (f" ({working}/{active} surveyors)" if active else ""))
+    subject = (f"{st.subject_prefix} Daily progress {p.day}: {p.on_day} interviews"
+               + (f" ({p.working}/{active} surveyors)" if active else ""))
     since = st.start_date or p.first_day or "-"
     facts = [("Report date", p.day), ("Form", p.form_name),
-             ("Interviews on the day", str(p.totals[1])),
-             ("Interviews since " + since, str(p.totals[5]))]
-    if p.totals[2] != "-":
-        facts.insert(3, ("Daily target (all surveyors)", f"{p.totals[2]}  ({p.totals[3]} reached)"))
+             ("Interviews on the day", str(p.on_day)),
+             ("Surveyors with interviews", f"{p.working} of {active}" if active else "-"),
+             ("Interviews since " + since, str(p.totals[-1]))]
+    cols = ["Surveyor"] + [_short(d) for d in p.days] + ["Total"]
+    note = (f"Columns show the last {len(p.days)} days; the {p.hidden_days} earlier day(s) are "
+            f"included in Total." if p.hidden_days else "")
 
     text = [f"Face-to-face survey: daily progress for {p.day}", "", _kv_text(facts), "",
-            "Per surveyor", text_table(COLS, p.rows, p.totals)]
-    body = [f"<h2 style=\"font:bold 18px Arial,sans-serif;margin:0 0 8px\">Face-to-face survey: "
+            "Interviews per surveyor per day", text_table(cols, p.rows, p.totals)]
+    h3 = '<h3 style="font:bold 15px Arial,sans-serif;margin:12px 0 4px">'
+    body = [f'<h2 style="font:bold 18px Arial,sans-serif;margin:0 0 8px">Face-to-face survey: '
             f"daily progress for {html.escape(p.day)}</h2>", _kv_html(facts),
-            "<h3 style=\"font:bold 15px Arial,sans-serif;margin:12px 0 4px\">Per surveyor</h3>",
-            html_table(COLS, p.rows, p.totals)]
+            f"{h3}Interviews per surveyor per day</h3>", html_table(cols, p.rows, p.totals)]
+    if note:
+        text.append(note)
+        body.append(f'<p style="font:12px Arial,sans-serif;color:#57606a">{html.escape(note)}</p>')
     if p.idle:
-        line = "No interviews on the day: " + ", ".join(p.idle)
-        text += ["", line]
-        body.append(f'<p style="font:14px Arial,sans-serif;color:#9a6700">{html.escape(line)}</p>')
+        msg = "No interviews on " + p.day + ": " + ", ".join(p.idle)
+        text += ["", msg]
+        body.append(f'<p style="font:14px Arial,sans-serif;color:#9a6700">{html.escape(msg)}</p>')
     if p.unknown:
-        line = ("Submissions from IDs that aren't in face_to_face.surveyors (check the ID entered, "
-                "or add them to config.json): " + ", ".join(f"{k} ({v})" for k, v in p.unknown.items()))
-        text += ["", line]
-        body.append(f'<p style="font:14px Arial,sans-serif;color:#57606a">{html.escape(line)}</p>')
+        msg = ("Submissions from IDs that aren't in face_to_face.surveyors (check the ID entered, "
+               "or add them to config.json): " + ", ".join(f"{k} ({v})" for k, v in p.unknown.items()))
+        text += ["", msg]
+        body.append(f'<p style="font:14px Arial,sans-serif;color:#57606a">{html.escape(msg)}</p>')
     if p.breakdown:
-        cols = [st.breakdown_field, "Interviews", "Last 7 days", "Total"]
-        tot = ("Total", sum(r[1] for r in p.breakdown), sum(r[2] for r in p.breakdown),
-               sum(r[3] for r in p.breakdown))
-        text += ["", f"By {st.breakdown_field}", text_table(cols, p.breakdown, tot)]
-        body += [f"<h3 style=\"font:bold 15px Arial,sans-serif;margin:12px 0 4px\">By "
-                 f"{html.escape(st.breakdown_field)}</h3>", html_table(cols, p.breakdown, tot)]
+        bcols = [st.breakdown_field] + [_short(d) for d in p.days] + ["Total"]
+        btot = ["Total"] + [sum(r[1 + n] for r in p.breakdown) for n in range(len(p.days))] \
+            + [sum(r[-1] for r in p.breakdown)]
+        text += ["", f"By {st.breakdown_field}", text_table(bcols, p.breakdown, btot)]
+        body += [f"{h3}By {html.escape(st.breakdown_field)}</h3>", html_table(bcols, p.breakdown, btot)]
     text += ["", "Counts every submission, whatever its validation status. Dates are in local time."]
     body.append('<p style="font:12px Arial,sans-serif;color:#57606a">Counts every submission, whatever '
                 'its validation status. Dates are in local time.</p>')
@@ -281,5 +285,5 @@ def run(cfg, run_day: str, day: Optional[str] = None, send: bool = True) -> int:
     except Exception as e:
         log.error("Face-to-face report not sent: %s", e)
         return 1
-    log.info("Face-to-face report for %s sent to %s (%d interviews on the day)", day, ", ".join(to), p.totals[1])
+    log.info("Face-to-face report for %s sent to %s (%d interviews on the day)", day, ", ".join(to), p.on_day)
     return 0

@@ -71,13 +71,13 @@
     "date_field": "_submission_time",
     "breakdown_field": "Province",
     "start_date": "",
-    "daily_target": 10,
+    "days_shown": 31,
     "report_day": "yesterday",
     "subject_prefix": "[Face-to-face]",
     "recipients": [],
     "surveyors": [
       { "id": "501", "name": "Surveyor A" },
-      { "id": "502", "name": "Surveyor B", "daily_target": 12 }
+      { "id": "502", "name": "Surveyor B" }
     ]
   },
 
