@@ -67,17 +67,18 @@
   "face_to_face": {
     "_comment": "Daily progress email for the face-to-face form: ./f2f_report.sh (see OPERATIONS.md). recipients empty = same as report.recipients",
     "form_uid": "",
-    "surveyor_field": "idnumber",
+    "surveyor_field": "_submitted_by",
+    "surveyor_fallback": "",
     "date_field": "_submission_time",
-    "breakdown_field": "Province",
+    "breakdown_field": "",
     "start_date": "",
-    "days_shown": 31,
+    "days_shown": 0,
     "report_day": "yesterday",
     "subject_prefix": "[Face-to-face]",
     "recipients": [],
     "surveyors": [
-      { "id": "501", "name": "Surveyor A" },
-      { "id": "502", "name": "Surveyor B" }
+      { "id": "pf_kabul123", "name": "Surveyor A", "province": "Kabul" },
+      { "id": "pf_herat0666", "name": "Surveyor B", "province": "Herat" }
     ]
   },
 

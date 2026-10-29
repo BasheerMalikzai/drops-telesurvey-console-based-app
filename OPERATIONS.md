@@ -112,21 +112,24 @@ says `Could not send the email report: …`.
 ### Face-to-face progress report
 
 A separate daily email for the face-to-face survey, which uses its own KoBo form
-in the same account. `./f2f_report.sh` reads that form and sends a table with
-one row per surveyor and one column per day (interviews that day), plus the
-total; then the surveyors with no interviews on the report day, unknown IDs
-and (optionally) the same table broken down by a field such as Province. It uses the same KoBo token and mail
+in the same account. `./f2f_report.sh` reads that form and sends:
+
+- **Per province**: surveys on the last day (the report day, yesterday) and in total
+  (province = the one set for each surveyor in `config.json`)
+- **Per surveyor**: province, surveys on the last day and in total
+- surveyors with no surveys on the last day, and accounts/IDs not in the list
+- optionally a day-by-day table (`days_shown`) It uses the same KoBo token and mail
 server, and changes nothing in KoBo or the database.
 
 | Setting (`config.json` → `face_to_face`) | Meaning |
 |---|---|
 | `form_uid` | The face-to-face form's UID (in its URL after `/forms/`) |
-| `surveyors` | `[{ "id": "501", "name": "…", "active": true }]`; `id` = what they enter in the ID question |
-| `surveyor_field` | Question holding the surveyor ID (default `idnumber`; falls back to `_submitted_by`) |
-| `days_shown` | How many of the most recent days get a column (default 31; earlier days still count in Total) |
-| `breakdown_field` | Optional question to break totals down by, e.g. `Province` (empty = none) |
+| `surveyors` | `[{ "id": "pf_kabul123", "name": "…", "province": "Kabul", "active": true }]` |
+| `surveyor_field` | What identifies a surveyor: `_submitted_by` (their KoBo username) or a question such as `idnumber` |
+| `days_shown` | Optional day-by-day table: how many recent days get a column (default `0` = no table) |
+| `breakdown_field` | Optional form question to break totals down by (empty = none) |
 | `date_field` | Which date counts: `_submission_time` (default) or a form field such as `today` |
-| `start_date` | Count from this date (e.g. `2026-10-01`); empty = all submissions |
+| `start_date` | Count totals from this date (e.g. `2026-10-01`); empty = from the first submission |
 | `report_day` | `yesterday` (default) or `today` |
 | `recipients` | Empty = the same people as the telesurvey report |
 
