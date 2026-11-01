@@ -143,6 +143,25 @@ Schedule it as a second daily task (PythonAnywhere **Tasks** tab), e.g. a few
 minutes after the morning run: `/home/USERNAME/telesurvey/f2f_report.sh`.
 If the form can't be read, the recipients get a short "FAILED" email instead.
 
+### Combined export (telesurvey + face-to-face)
+
+`./export_combined.sh` downloads both forms and writes one table to
+`data/exports/combined_<date>.xlsx` (and `.csv`), with the columns
+`SN#, Age Range, Children, Education, Gender, income, Marital Status,
+Profession Code, Province Code, Question 1–4 (with their labels), source, idnumber`.
+
+| Rows | Which submissions | `idnumber` |
+|---|---|---|
+| `TS` | Telesurvey, call status `1` (picked up) only | the caller's ID |
+| `FF` | Face-to-face, all | the surveyor's KoBo username |
+
+Answers are the codes stored in KoBo; `./export_combined.sh --labels` writes the
+choice labels instead. Download the file from the **Files** tab (`data/exports`).
+Settings (optional, `config.json` → `combined_export`): `ts_call_status`
+(default `["1"]`) and `ff_id_field` (default: the face-to-face `surveyor_field`,
+else `_submitted_by`). Needs `openpyxl` for the Excel file
+(`.venv/bin/pip install openpyxl`); without it only the CSV is written.
+
 ---
 
 ## 4. What happens to each number

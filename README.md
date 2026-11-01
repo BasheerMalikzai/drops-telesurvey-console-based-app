@@ -38,6 +38,7 @@ computer: no web server or public address needed.
 | `setup.sh` | Install, configure, test, schedule; safe to re-run |
 | `daily.sh` | The morning run |
 | `sync.sh` | The sync job during the day |
+| `export_combined.sh` | One Excel/CSV table of telesurvey (call status 1) and face-to-face answers |
 | `f2f_report.sh` | Daily progress email for the face-to-face survey (separate KoBo form) |
 | `verify_kobo_media.py` | Checks that `assignments.csv` reached KoBo and works as a form attachment |
 | `config.json` | Surveyors, call-result categories, form field names, report recipients, schedule |
